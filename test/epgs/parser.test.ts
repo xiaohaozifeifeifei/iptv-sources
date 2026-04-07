@@ -45,6 +45,7 @@ describe('parseEpgXml', () => {
   it('should return empty array when empty or no tv', () => {
     expect(parseEpgXml('')).toEqual([]);
     expect(parseEpgXml('<root></root>')).toEqual([]);
+    expect(parseEpgXml('<tv><channel id="1"></tv>')).toEqual([]);
   });
 
   it('should parse XMLTV format and return date, channel, item', () => {
@@ -76,5 +77,46 @@ describe('parseEpgXml', () => {
     const xml = fs.readFileSync(path.join(__dirname, 'e.xml'), 'utf-8');
     const out = parseEpgXml(xml);
     expect(out.length).toBeGreaterThan(0);
+  });
+
+  it('should parse text nodes with attributes via xml2js output shape', () => {
+    const xml = `<?xml version="1.0"?>
+<tv>
+  <channel id="1" name="Fallback Name">
+    <display-name lang="zh">CCTV-1 综合</display-name>
+  </channel>
+  <programme start="20240314080000 +0800" stop="20240314090000 +0800" channel="1">
+    <title lang="zh">朝闻天下</title>
+  </programme>
+</tv>`;
+
+    const out = parseEpgXml(xml);
+
+    expect(out).toHaveLength(1);
+    expect(out[0]).toEqual({
+      date: '2024-03-14',
+      channel: 'CCTV-1 综合',
+      item: {
+        start: '08:00',
+        end: '09:00',
+        title: '朝闻天下',
+      },
+    });
+  });
+
+  it('should fall back to channel name attribute when display-name is missing', () => {
+    const xml = `<?xml version="1.0"?>
+<tv>
+  <channel id="1" name="CCTV-2 财经" />
+  <programme start="20240314090000 +0800" stop="20240314100000 +0800" channel="1">
+    <title>第一时间</title>
+  </programme>
+</tv>`;
+
+    const out = parseEpgXml(xml);
+
+    expect(out).toHaveLength(1);
+    expect(out[0].channel).toBe('CCTV-2 财经');
+    expect(out[0].item.title).toBe('第一时间');
   });
 });

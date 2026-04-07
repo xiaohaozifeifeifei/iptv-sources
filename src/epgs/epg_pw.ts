@@ -4,33 +4,23 @@
  * 流程：
  *  1. 访问 https://epg.pw/areas/cn.html?lang=zh-hans 提取频道 ID 与名称
  *  2. 对每个频道调用 https://epg.pw/api/epg.xml?lang=zh-hans&date=YYYYMMDD&channel_id=ID
- *  3. 使用 fast-xml-parser 解析各响应中的 <channel> 与 <programme> 节点
- *  4. 去重合并后由 XMLBuilder 输出一份完整的 XMLTV XML
+ *  3. 使用 xml2js 解析各响应中的 <channel> 与 <programme> 节点
+ *  4. 去重合并后由 Builder 输出一份完整的 XMLTV XML
  */
-
-import { XMLBuilder, XMLParser } from 'fast-xml-parser';
 
 import { writeEpgJsonFromXml } from '../file';
 import type { EpgChannelJson } from './parser';
 import { writeFile } from 'fs/promises';
 import path from 'path';
 import { mkdir } from 'fs/promises';
-
-/** 与 src/epgs/parser.ts 保持一致，便于结构一致 */
-const PW_EPG_PARSER_OPTIONS = {
-  ignoreAttributes: false,
-  attributeNamePrefix: '@_' as const,
-  /** 单条也解析为数组，避免手写分支 */
-  isArray: (tagName: string) => tagName === 'channel' || tagName === 'programme',
-};
-
-const epgPwParser = new XMLParser(PW_EPG_PARSER_OPTIONS);
-
-const epgPwBuilder = new XMLBuilder({
-  ignoreAttributes: false,
-  attributeNamePrefix: '@_',
-  suppressEmptyNode: true,
-});
+import {
+  buildXmlDocument,
+  normalizeXmlList,
+  parseXmlDocument,
+  readXmlAttr,
+  readXmlText,
+  type XmlNodeWithAttributes,
+} from './xml';
 
 type EpgPwTvNode = {
   channel?: EpgPwChannelNode | EpgPwChannelNode[];
@@ -42,26 +32,21 @@ interface EpgPwChannel {
   name: string;
 }
 
-type EpgPwTextNode =
-  | string
-  | {
-      '#text'?: string;
-      [key: string]: unknown;
-    };
+type EpgPwTextNode = string | XmlNodeWithAttributes | Array<string | XmlNodeWithAttributes>;
 
-interface EpgPwXmlNodeBase {
-  [key: string]: unknown;
-}
-
-interface EpgPwChannelNode extends EpgPwXmlNodeBase {
-  '@_id'?: string;
+interface EpgPwChannelNode extends XmlNodeWithAttributes {
+  $?: {
+    id?: string;
+  };
   'display-name'?: EpgPwTextNode | EpgPwTextNode[];
 }
 
-interface EpgPwProgrammeNode extends EpgPwXmlNodeBase {
-  '@_start'?: string;
-  '@_stop'?: string;
-  '@_channel'?: string;
+interface EpgPwProgrammeNode extends XmlNodeWithAttributes {
+  $?: {
+    start?: string;
+    stop?: string;
+    channel?: string;
+  };
   title?: EpgPwTextNode | EpgPwTextNode[];
   desc?: EpgPwTextNode | EpgPwTextNode[];
 }
@@ -149,16 +134,8 @@ async function fetchChannelEpg(channelId: string, date: string): Promise<string 
   }
 }
 
-function normalizeTagList<T>(node: unknown): T[] {
-  if (node === undefined || node === null) return [];
-  return Array.isArray(node) ? (node as T[]) : [node as T];
-}
-
 function channelIdFromNode(node: EpgPwChannelNode): string | null {
-  const id = node['@_id'];
-  if (id === undefined || id === null) return null;
-  const s = String(id).trim();
-  return s || null;
+  return readXmlAttr(node, 'id') || null;
 }
 
 /**
@@ -168,17 +145,15 @@ function parsePwEpgXml(xml: string): {
   channels: EpgPwChannelNode[];
   programmes: EpgPwProgrammeNode[];
 } {
-  try {
-    const parsed = epgPwParser.parse(xml) as { tv?: EpgPwTvNode };
-    const tv = parsed?.tv;
-    if (!tv) return { channels: [], programmes: [] };
-    return {
-      channels: normalizeTagList<EpgPwChannelNode>(tv.channel),
-      programmes: normalizeTagList<EpgPwProgrammeNode>(tv.programme),
-    };
-  } catch {
+  const parsed = parseXmlDocument<{ tv?: EpgPwTvNode }>(xml);
+  const tv = parsed?.tv;
+  if (!tv) {
     return { channels: [], programmes: [] };
   }
+  return {
+    channels: normalizeXmlList(tv.channel),
+    programmes: normalizeXmlList(tv.programme),
+  };
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -238,16 +213,22 @@ export async function buildEpgPwXml(batchSize = 10, delayMs = 300): Promise<stri
           }
         }
         const currentChannel = chList[0];
-        const currentChannelName = (currentChannel['display-name'] as string)?.trim().toLowerCase();
+        const currentChannelName = readXmlText(currentChannel?.['display-name']).toLowerCase();
         const json: EpgChannelJson = {
           channel: currentChannelName,
-          epg_data: progList.map((prog) => ({
-            start: formatTime(
-              utcDate((prog['@_start'] as { '#text'?: string })['#text'] as string)
-            ),
-            end: formatTime(utcDate((prog['@_stop'] as { '#text'?: string })['#text'] as string)),
-            title: prog.title as string,
-          })),
+          epg_data: progList
+            .map((prog) => {
+              const start = readXmlAttr(prog, 'start');
+              const stop = readXmlAttr(prog, 'stop');
+              if (!start || !stop) return null;
+
+              return {
+                start: formatTime(utcDate(start)),
+                end: formatTime(utcDate(stop)),
+                title: readXmlText(prog.title),
+              };
+            })
+            .filter((item): item is EpgChannelJson['epg_data'][number] => item !== null),
         };
         const savePath = await mkdir(path.join(basePath, currentChannelName), { recursive: true });
         await writeFile(
@@ -270,7 +251,7 @@ export async function buildEpgPwXml(batchSize = 10, delayMs = 300): Promise<stri
     `[EPG.PW] Done — ${seenChannelIds.size} channels, ${programmeNodes.length} programmes`
   );
 
-  const tvBody = epgPwBuilder.build({
+  const tvBody = buildXmlDocument({
     tv: {
       channel: channelNodes,
       programme: programmeNodes,
