@@ -4,7 +4,7 @@ import type { ISource, TSources } from './utils';
 
 export const epg_pw_filter: ISource['filter'] = (raw, caller, collectFn): [string, number] => {
   const rawArray = handle_m3u(raw);
-  const regExp = /\#EXTINF:-1\s+tvg\-name\=\"([^"]+)\"/;
+  const regExp = /#EXTINF:-1\s+tvg-name="([^"]+)"/;
 
   let i = 1;
   const sourced: string[] = [];
@@ -22,9 +22,9 @@ export const epg_pw_filter: ISource['filter'] = (raw, caller, collectFn): [strin
         sourced.push(reg[1]);
         result.push(
           rawArray[i]
-            .replace(/\@\@[0-9]*/g, '')
-            .replace(/\[geo\-blocked\]/, '')
-            .replace(/\[Geo\-blocked\]/, '')
+            .replace(/@@[0-9]*/g, '')
+            .replace(/\[geo-blocked\]/, '')
+            .replace(/\[Geo-blocked\]/, '')
             .trim()
         );
         result.push(rawArray[i + 1]);
@@ -44,24 +44,24 @@ export const epg_pw_sources: TSources = [
     url: 'https://epg.pw/test_channels_china.m3u',
     filter: epg_pw_filter,
   },
-  {
-    name: 'epg.pw China National',
-    f_name: 'cn_n',
-    url: 'https://epg.pw/test_channels_china_national.m3u',
-    filter: epg_pw_filter,
-  },
-  {
-    name: 'epg.pw China Country',
-    f_name: 'cn_c',
-    url: 'https://epg.pw/test_channels_china_country.m3u',
-    filter: epg_pw_filter,
-  },
-  {
-    name: 'epg.pw China Province',
-    f_name: 'cn_p',
-    url: 'https://epg.pw/test_channels_china_province.m3u',
-    filter: epg_pw_filter,
-  },
+  // {
+  //   name: 'epg.pw China National',
+  //   f_name: 'cn_n',
+  //   url: 'https://epg.pw/test_channels_china_national.m3u',
+  //   filter: epg_pw_filter,
+  // },
+  // {
+  //   name: 'epg.pw China Country',
+  //   f_name: 'cn_c',
+  //   url: 'https://epg.pw/test_channels_china_country.m3u',
+  //   filter: epg_pw_filter,
+  // },
+  // {
+  //   name: 'epg.pw China Province',
+  //   f_name: 'cn_p',
+  //   url: 'https://epg.pw/test_channels_china_province.m3u',
+  //   filter: epg_pw_filter,
+  // },
   {
     name: 'epg.pw All',
     f_name: 'all',

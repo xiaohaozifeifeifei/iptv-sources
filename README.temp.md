@@ -10,7 +10,6 @@
 |------|------|
 | [epg.pw](https://epg.pw/test_channel_page.html) | 全球频道 |
 | [youhun](https://github.com/HerbertHe/youhun) | 国内频道 |
-| [zbds](https://github.com/youhunwl/TVAPP) | 国内频道 |
 | [hotel_tvn](https://github.com/HerbertHe/hotel_tvn) | 酒店源 |
 
 ## EPG 数据源
@@ -43,10 +42,11 @@ You can also use the services provided by Mirror Sites Matrix! See <https://m3u.
 
 EPG 链接格式（`{date}`、`{name}` 由 TVBox 自动替换）：
 
-- 51zmt：`{site_url}/epg/51zmt/{date}/{name}.json`
-- epg.pw 聚合：`{site_url}/epg/epg_pw/{date}/{name}.json`
+- 51zmt 当天聚合：`{site_url}/epg/51zmt/{date}/{name}.json`
+- epg.pw 当天聚合：`{site_url}/epg/epg_pw/{date}/{name}.json`
+- epg.pw 7天聚合：`{site_url}/epg/pw-7/{date}/{name}.json`
 
-在 TVBox 直播源 JSON 的 `epg` 字段中填入上述任一完整 URL（将 `{site_url}` 换成本站域名）即可查看节目预告。
+在 TVBox 直播源 JSON 的 `epg` 字段中填入上述任一完整 URL 即可查看节目预告。
 
 ## LICENSE
 

@@ -27,14 +27,14 @@ describe('sanitizeChannelFileName', () => {
 describe('mergeByDateAndChannel', () => {
   it('should merge by date and channel and sort by time slot', () => {
     const items = [
-      { date: '20240314', channel: 'CCTV-1', item: { start: '20:00', end: '21:00', title: 'A' } },
-      { date: '20240314', channel: 'CCTV-1', item: { start: '18:00', end: '19:00', title: 'B' } },
-      { date: '20240314', channel: 'CCTV-2', item: { start: '19:00', end: '20:00', title: 'C' } },
+      { date: '2024-03-14', channel: 'CCTV-1', item: { start: '20:00', end: '21:00', title: 'A' } },
+      { date: '2024-03-14', channel: 'CCTV-1', item: { start: '18:00', end: '19:00', title: 'B' } },
+      { date: '2024-03-14', channel: 'CCTV-2', item: { start: '19:00', end: '20:00', title: 'C' } },
     ];
     const result = mergeByDateAndChannel(items);
-    const key1 = '20240314\tCCTV-1';
+    const key1 = '2024-03-14\tCCTV-1';
     expect(result.has(key1)).toBe(true);
-    const epg = result.get(key1)!.epg;
+    const epg = result.get(key1)!.epg_data;
     expect(epg.map((e) => e.title)).toEqual(['B', 'A']);
     expect(epg[0].start).toBe('18:00');
     expect(epg[1].start).toBe('20:00');
@@ -45,6 +45,7 @@ describe('parseEpgXml', () => {
   it('should return empty array when empty or no tv', () => {
     expect(parseEpgXml('')).toEqual([]);
     expect(parseEpgXml('<root></root>')).toEqual([]);
+    expect(parseEpgXml('<tv><channel id="1"></tv>')).toEqual([]);
   });
 
   it('should parse XMLTV format and return date, channel, item', () => {
@@ -59,22 +60,83 @@ describe('parseEpgXml', () => {
 </tv>`;
     const out = parseEpgXml(xml);
     expect(out).toHaveLength(1);
-    expect(out[0].date).toBe('20240314');
+    expect(out[0].date).toBe('2024-03-14');
     expect(out[0].channel).toBe('CCTV-1');
     expect(out[0].item.start).toBe('08:00');
     expect(out[0].item.end).toBe('09:00');
     expect(out[0].item.title).toBe('新闻');
 
     const byDateChannel = mergeByDateAndChannel(out);
-    expect(byDateChannel.has('20240314\tCCTV-1')).toBe(true);
-    const epg = byDateChannel.get('20240314\tCCTV-1')!.epg;
+    expect(byDateChannel.has('2024-03-14\tCCTV-1')).toBe(true);
+    const epg = byDateChannel.get('2024-03-14\tCCTV-1')!.epg_data;
     expect(epg.map((e) => e.title)).toEqual(['新闻']);
     expect(epg[0].start).toBe('08:00');
     expect(epg[0].end).toBe('09:00');
   });
+
+  it('should convert UTC XMLTV timestamps into China date and time', () => {
+    const xml = `<?xml version="1.0"?>
+<tv>
+  <channel id="1" name="CCTV-1">
+    <display-name>CCTV-1</display-name>
+  </channel>
+  <programme start="20240314163000 +0000" stop="20240314180000 +0000" channel="1">
+    <title>晚间节目</title>
+  </programme>
+</tv>`;
+
+    const out = parseEpgXml(xml);
+
+    expect(out).toHaveLength(1);
+    expect(out[0].date).toBe('2024-03-15');
+    expect(out[0].item.start).toBe('00:30');
+    expect(out[0].item.end).toBe('02:00');
+  });
+
   it('should parse XMLTV format and return date, channel, item from xml file', () => {
     const xml = fs.readFileSync(path.join(__dirname, 'e.xml'), 'utf-8');
     const out = parseEpgXml(xml);
     expect(out.length).toBeGreaterThan(0);
+  });
+
+  it('should parse text nodes with attributes via xml2js output shape', () => {
+    const xml = `<?xml version="1.0"?>
+<tv>
+  <channel id="1" name="Fallback Name">
+    <display-name lang="zh">CCTV-1 综合</display-name>
+  </channel>
+  <programme start="20240314080000 +0800" stop="20240314090000 +0800" channel="1">
+    <title lang="zh">朝闻天下</title>
+  </programme>
+</tv>`;
+
+    const out = parseEpgXml(xml);
+
+    expect(out).toHaveLength(1);
+    expect(out[0]).toEqual({
+      date: '2024-03-14',
+      channel: 'CCTV-1 综合',
+      item: {
+        start: '08:00',
+        end: '09:00',
+        title: '朝闻天下',
+      },
+    });
+  });
+
+  it('should fall back to channel name attribute when display-name is missing', () => {
+    const xml = `<?xml version="1.0"?>
+<tv>
+  <channel id="1" name="CCTV-2 财经" />
+  <programme start="20240314090000 +0800" stop="20240314100000 +0800" channel="1">
+    <title>第一时间</title>
+  </programme>
+</tv>`;
+
+    const out = parseEpgXml(xml);
+
+    expect(out).toHaveLength(1);
+    expect(out[0].channel).toBe('CCTV-2 财经');
+    expect(out[0].item.title).toBe('第一时间');
   });
 });

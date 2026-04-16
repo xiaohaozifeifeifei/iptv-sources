@@ -20,13 +20,6 @@ export const sites_matrix: TREADMEMirrorSitesMatrix = [
   },
   {
     protocol: 'https',
-    url: 'https://iptv.helima.net',
-    frequence: 'per 2.5h',
-    idc: 'Oracle',
-    provider: '[DobySAMA](https://github.com/DobySAMA)',
-  },
-  {
-    protocol: 'https',
     url: 'https://m3u.002397.xyz',
     frequence: 'per 2h',
     idc: 'CloudFlare Tunnel',
@@ -63,7 +56,7 @@ export const get_github_raw_proxy_url = () => {
 export const replace_github_raw_proxy_url = (s: string) => {
   const proxy_url = get_github_raw_proxy_url();
   return s.replace(
-    /tvg\-logo="https:\/\/raw\.githubusercontent\.com\//g,
+    /tvg-logo="https:\/\/raw\.githubusercontent\.com\//g,
     `tvg-logo="${proxy_url}/https://raw.githubusercontent.com/`
   );
 };
